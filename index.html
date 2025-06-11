@@ -499,6 +499,18 @@
             padding: 50px 10px;
             margin-top: 30px;
         }
+
+        /* 注意書きスタイル */
+        .selection-note {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+            text-align: center;
+            background-color: #fff3cd;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ffeaa7;
+        }
     </style>
 </head>
 
@@ -514,8 +526,8 @@
     <!--編集箇所（見た目部分）-->
     <div class="container">
         <h1>カウンセリングルームスマイル<br>アンケートフォーム</h1>
-        <div class="info-text">以下全て入力後【アンケート送信】ボタンを押してください。</div>
-        <div class="label">お名前(漢字フルネーム/ふりがな)【匿名も可】</div>
+        <div class="info-text">ご登録ありがとうございます！<br>ご登録くださった方にピッタリ合った配信を行うために、<br>以下のアンケートにご協力いただけると嬉しいです。<br>お手数ですが、ご入力後【アンケート送信】ボタンを押してください！</div>
+        <div class="label">お名前【匿名も可】</div>
         <textarea id="message" rows="1" placeholder="入力してください"></textarea> <!-- メッセージ入力フィールド -->
 
         <div class="label">ご職業</div>
@@ -529,7 +541,7 @@
             <button type="button" id="sevenpriority" onclick="selectpriority(this)">その他</button>
         </div>
 
-        <div class="label">ご相談内容</div>
+        <div class="label">ご相談内容※主なものを二つまでお選びください</div>
         <div class="demand-buttons">
             <button type="button" id="onedemand" onclick="selectdemand(this)">夫婦関係</button>
             <button type="button" id="twodemand" onclick="selectdemand(this)"> 子育て</button>
@@ -548,15 +560,32 @@
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script> <!-- LIFF SDKの読み込み -->
     <script>
         let priorityCount = '';
-        let demandCount = '';
+        let demandCount = [];  // 配列に変更
+        let liffReady = false; // LIFF準備完了フラグ
+
+        // LIFF初期化を待つ関数
+        function waitForLiff() {
+            return new Promise((resolve, reject) => {
+                if (typeof liff !== 'undefined') {
+                    resolve();
+                } else {
+                    setTimeout(() => {
+                        waitForLiff().then(resolve).catch(reject);
+                    }, 100);
+                }
+            });
+        }
 
         // LIFF初期化
         document.addEventListener('DOMContentLoaded', function () {
-            liff.init({
-                liffId: '2005254357-zKma9BZk' // ここにあなたのLIFF IDを入力*********************忘れない！！！！******************************
+            waitForLiff().then(() => {
+                return liff.init({
+                    liffId: '2005254357-zKma9BZk' // ここにあなたのLIFF IDを入力*********************忘れない！！！！******************************
+                });
             }).then(() => {
                 // LIFF初期化成功時の処理
                 console.log('LIFF初期化成功');
+                liffReady = true;
             }).catch((err) => {
                 // LIFF初期化失敗時の処理
                 console.error('LIFF初期化失敗', err);
@@ -587,20 +616,36 @@
         }
 
         function selectdemand(element) {
-            // 単一選択項目の処理コード
-            const buttons = document.querySelectorAll('.demand-buttons button');
-            buttons.forEach(button => button.classList.remove('active'));
-
-            // 選択されたボタンだけにactiveクラスを追加
-            element.classList.add('active');
-            demandCount = element.innerText;
+            // 複数選択（最大2つ）の処理コード
+            const buttonText = element.innerText;
+            
+            if (element.classList.contains('active')) {
+                // 既に選択されている場合は選択を解除
+                element.classList.remove('active');
+                demandCount = demandCount.filter(item => item !== buttonText);
+            } else {
+                // 新しく選択する場合
+                if (demandCount.length < 2) {
+                    element.classList.add('active');
+                    demandCount.push(buttonText);
+                } else {
+                    alert('最大2つまでしか選択できません。');
+                }
+            }
+            
+            // 選択数を表示更新
+            document.getElementById('selectedCount').textContent = demandCount.length;
         }
 
         //見た目変更した際に不要な物は消す！
         function submitForm() {
+            // LIFF準備完了チェック
+            if (!liffReady) {
+                alert('システムの準備中です。少し待ってから再度お試しください。');
+                return;
+            }
+
             const message = document.getElementById('message').value;
-            priorityCount: priorityCount;
-            demandCount: demandCount;
 
             const formData = {
                 message,
@@ -620,25 +665,34 @@
                 return;
             }
 
-            // フォームデータのチェック
-            if (!formData.demandCount) {
-                alert('ご相談内容をご選択ください。');
+            // フォームデータのチェック（1つ以上2つ以下選択されているか確認）
+            if (formData.demandCount.length === 0 || formData.demandCount.length > 2) {
+                alert('ご相談内容を1つ以上選択してください。');
                 return;
             }
 
+            // 相談内容を文字列として整形
+            const demandText = formData.demandCount.join('・');
+
             // LINEトークにメッセージを送信
-            liff.sendMessages([{
-                type: 'text',
-                text: `≪アンケート≫\n【お名前】\n・${formData.message}\n\n【ご職業】\n・${formData.priorityCount}\n\n【ご相談内容】\n・${formData.demandCount}`
-            }]).then(() => {
-                /* メッセージ送信成功時の処理 */
-                alert('ご記入ありがとうございます。');
-                /* LIFFウィンドウを閉じる */
-                liff.closeWindow();
-            }).catch((err) => {
-                /* メッセージ送信失敗時の処理 */
-                console.error('メッセージの送信に失敗しました', err);
-            });
+            if (typeof liff !== 'undefined') {
+                liff.sendMessages([{
+                    type: 'text',
+                    text: `≪アンケート≫\n【お名前】\n・${formData.message}\n\n【ご職業】\n・${formData.priorityCount}\n\n【ご相談内容】\n・${demandText}`
+                }]).then(() => {
+                    /* メッセージ送信成功時の処理 */
+                    alert('ご記入ありがとうございます。');
+                    /* LIFFウィンドウを閉じる */
+                    liff.closeWindow();
+                }).catch((err) => {
+                    /* メッセージ送信失败時の処理 */
+                    console.error('メッセージの送信に失敗しました', err);
+                    alert('送信に失敗しました。もう一度お試しください。');
+                });
+            } else {
+                alert('LINE環境でない場合は送信できません。');
+                console.log('送信予定データ:', formData);
+            }
         }
 
     </script>
